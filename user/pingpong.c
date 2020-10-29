@@ -4,25 +4,28 @@
 
 int  main(int argc,char* argv[]){
     int p[2];
+    int p2[2];
+    char res[10];
     if(pipe(p)!=0){
         printf("pipe failed\n");
     }
+    if(pipe(p2)!=0){
+    	printf("pipe failed\n");
+    }
+
     int pid = fork();
     if(pid<0){
         printf("fork failed\n");
     }else if(pid==0){
         //child
-        write(p[0],"ping",4);
-        close(p[0]);
-        void *res;
-        read(p[1],res,4);
-        printf("child:received %s",*((char *)res));
+        write(p[1],"pong",4);
+        read(p2[0],res,4);
+        printf("%d:received %s\n",getpid(),res);
     }else{
         //parent
-        write(p[1],"pong",4);
-        void *res;
+        write(p2[1],"ping",4);
         read(p[0],res,4);
-        printf("parent:received %s",*((char *)res));
+        printf("%d:received %s\n",getpid(),res);
     }
     exit(0);
 }

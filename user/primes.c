@@ -8,10 +8,7 @@ void redirect(int k,int p[]);
 
 int  main(int argc,char* argv[]){
     int p[2];
-    if(pipe(p)!=0){
-        printf("pipe failed\n");
-        exit(0);
-    }
+    pipe(p);
     int pid = fork();
     if(pid<0){
         printf("fork failed\n");
@@ -24,13 +21,16 @@ int  main(int argc,char* argv[]){
         //parents
         redirect(1,p);
         sourse();
+	close(1);
+	wait(&pid);
     }
     exit(0);
 }
 
 //input nums to pipe
 void sourse(){
-    for(int i=2;i<36;i++){
+    int i;
+    for(i=2;i<36;i++){
         write(1, &i, sizeof(i));
     }
 }
@@ -41,9 +41,11 @@ void filter(int prime){
     while(read(0,&n,sizeof(n))){
         if(n%prime!=0){
             //give it to pipe
-            write(0,&n,sizeof(n));
+            write(1,&n,sizeof(int));
         }
     }
+    close(1);
+    exit(0);
 }
 
 //
@@ -51,7 +53,7 @@ void sink(){
     int p[2];
     int prime;
     if(read(0,&prime,sizeof(prime))){
-        printf("prime:%d",prime);
+        printf("prime:%d\n",prime);
         pipe(p);
         if(fork()){
             redirect(0,p);
@@ -60,6 +62,9 @@ void sink(){
             redirect(1,p);
             filter(prime);
         }
+    }else{
+    	close(1);
+   	exit(0);
     }
 }
 
