@@ -31,6 +31,7 @@ main(int argc, char *argv[])
     while (i < MAXARG-1) {
       if ((len = read(0, &buf, 1)) <= 0) {
         // CTRL+D :
+	wait(&pid);
         exit(0);
       }
       if (buf == '\n') {
