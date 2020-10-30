@@ -18,14 +18,14 @@ int  main(int argc,char* argv[]){
         printf("fork failed\n");
     }else if(pid==0){
         //child
-        write(p[1],"pong",4);
         read(p2[0],res,4);
-        printf("%d:received %s\n",getpid(),res);
+        printf("%d: received %s\n",getpid(),res);
+        write(p[1],"pong",4);   
     }else{
         //parent
         write(p2[1],"ping",4);
         read(p[0],res,4);
-        printf("%d:received %s\n",getpid(),res);
+        printf("%d: received %s\n",getpid(),res);
     }
     exit(0);
 }
