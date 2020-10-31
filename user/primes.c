@@ -16,6 +16,7 @@ void cull(int p) {
       write(1, &n, sizeof(n));
     }
   }
+  close(1);
   exit(0);
 }
 
@@ -49,7 +50,6 @@ void sink() {
 }
 
 int main(int argc, char *argv[]) {
-
   int pd[2];
   pipe(pd);
 

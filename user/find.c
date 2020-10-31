@@ -45,8 +45,8 @@ find(char *path, char *re)
             find(buf,re);
           break;
         case T_FILE:
-          if(strcmp(de.name,re)!=0)
-            printf("%s\n",p);
+          if(strcmp(de.name,re)==0)
+            printf("%s\n",buf);
           break;
       }
     }
