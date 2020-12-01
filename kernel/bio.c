@@ -23,31 +23,47 @@
 #include "fs.h"
 #include "buf.h"
 
+#define NBUCKETS 13
+
 struct {
-  struct spinlock lock;
+  struct spinlock lock[NBUCKETS];
   struct buf buf[NBUF];
 
   // Linked list of all buffers, through prev/next.
   // head.next is most recently used.
-  struct buf head;
+  //struct buf head;
+  struct buf hashbucket[NBUCKETS];
 } bcache;
+
+int
+hash(struct buf *b){
+  return b->blockno % 13;
+}
 
 void
 binit(void)
 {
   struct buf *b;
-
-  initlock(&bcache.lock, "bcache");
-
+  for(int i=0;i<NBUCKETS;i++){
+    initlock(&(bcache.lock[i]), "bcache");
+    // Create linked list of buffers
+    bcache.hashbucket[i].prev = &(bcache.hashbucket[i]);
+    bcache.hashbucket[i].next = &(bcache.hashbucket[i]);
+  }
+  
   // Create linked list of buffers
-  bcache.head.prev = &bcache.head;
-  bcache.head.next = &bcache.head;
+  //bcache.head.prev = &bcache.head;
+  //bcache.head.next = &bcache.head;
+  int d = 0;
   for(b = bcache.buf; b < bcache.buf+NBUF; b++){
-    b->next = bcache.head.next;
-    b->prev = &bcache.head;
+    int c = d++ % 13;
+    b->next = bcache.hashbucket[c].next;
+    b->prev = &bcache.hashbucket[c];
     initsleeplock(&b->lock, "buffer");
-    bcache.head.next->prev = b;
-    bcache.head.next = b;
+    bcache.hashbucket[c].next->prev = b;
+    bcache.hashbucket[c].next = b;
+    
+
   }
 }
 
@@ -59,30 +75,59 @@ bget(uint dev, uint blockno)
 {
   struct buf *b;
 
-  acquire(&bcache.lock);
+  int c = blockno % 13;
+  acquire(&(bcache.lock[c]));
 
   // Is the block already cached?
-  for(b = bcache.head.next; b != &bcache.head; b = b->next){
+  for(b = bcache.hashbucket[c].next; b != &bcache.hashbucket[c]; b = b->next){
     if(b->dev == dev && b->blockno == blockno){
       b->refcnt++;
-      release(&bcache.lock);
+      release(&(bcache.lock[c]));
       acquiresleep(&b->lock);
       return b;
     }
   }
 
   // Not cached; recycle an unused buffer.
-  for(b = bcache.head.prev; b != &bcache.head; b = b->prev){
+  for(b = bcache.hashbucket[c].prev; b != &bcache.hashbucket[c]; b = b->prev){
     if(b->refcnt == 0) {
       b->dev = dev;
       b->blockno = blockno;
       b->valid = 0;
       b->refcnt = 1;
-      release(&bcache.lock);
+      release(&(bcache.lock[c]));
       acquiresleep(&b->lock);
       return b;
     }
   }
+  
+  //use other bucket's cache
+  for(int i=0;i<NBUCKETS;i++){
+    if(i==c) continue;
+    acquire(&(bcache.lock[i]));
+    for(b = bcache.hashbucket[i].prev; b != &bcache.hashbucket[i]; b = b->prev){
+      if(b->refcnt == 0) {
+
+        b->prev->next = b->next;
+        b->next->prev = b->prev;
+        b->prev = &bcache.hashbucket[c];
+        b->next = bcache.hashbucket[c].next;
+        bcache.hashbucket[c].next->prev = b;
+        bcache.hashbucket[c].next = b;
+
+        b->dev = dev;
+        b->blockno = blockno;
+        b->valid = 0;
+        b->refcnt = 1;
+        release(&(bcache.lock[c]));
+        acquiresleep(&b->lock);
+        release(&(bcache.lock[i]));       
+        return b;
+      }
+    }
+    release(&(bcache.lock[i]));
+  }
+
   panic("bget: no buffers");
 }
 
@@ -119,33 +164,36 @@ brelse(struct buf *b)
 
   releasesleep(&b->lock);
 
-  acquire(&bcache.lock);
+  int c = hash(b);
+
+  acquire(&bcache.lock[c]);
   b->refcnt--;
   if (b->refcnt == 0) {
     // no one is waiting for it.
     b->next->prev = b->prev;
     b->prev->next = b->next;
-    b->next = bcache.head.next;
-    b->prev = &bcache.head;
-    bcache.head.next->prev = b;
-    bcache.head.next = b;
+    b->next = bcache.hashbucket[c].next;
+    b->prev = &bcache.hashbucket[c];
+    bcache.hashbucket[c].next->prev = b;
+    bcache.hashbucket[c].next = b;
   }
   
-  release(&bcache.lock);
+  release(&bcache.lock[c]);
 }
 
 void
 bpin(struct buf *b) {
-  acquire(&bcache.lock);
+  int c = hash(b);
+  acquire(&bcache.lock[c]);
   b->refcnt++;
-  release(&bcache.lock);
+  release(&bcache.lock[c]);
 }
 
 void
 bunpin(struct buf *b) {
-  acquire(&bcache.lock);
+  int c = hash(b);
+  acquire(&bcache.lock[c]);
   b->refcnt--;
-  release(&bcache.lock);
+  release(&bcache.lock[c]);
 }
-
 
